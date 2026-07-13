@@ -14,6 +14,10 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://nexforex:nexforex
 if DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.split("://", 1)[1]
     DATABASE_URL = "postgresql+asyncpg://" + DATABASE_URL
+# asyncpg's connect() has no "sslmode" kwarg (libpq/psycopg naming) — it uses "ssl" instead.
+# Rewrite the query param so SQLAlchemy's asyncpg dialect passes a kwarg asyncpg understands.
+if "sslmode=" in DATABASE_URL:
+    DATABASE_URL = DATABASE_URL.replace("sslmode=", "ssl=")
 
 # Telegram Payments provider token (from BotFather -> Payments, e.g. Payme/Click/Stripe)
 PAYMENT_PROVIDER_TOKEN = os.getenv("PAYMENT_PROVIDER_TOKEN", "")
