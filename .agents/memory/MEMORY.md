@@ -1,1 +1,0 @@
-- [NexForexAI DB connection gotchas](nexforexai-db-connection.md) — Replit's DATABASE_URL needs `+asyncpg` scheme rewrite and `sslmode`→`ssl` param rename for async SQLAlchemy/asyncpg; also watch anthropic SDK/httpx `proxies` kwarg break.
