@@ -1,25 +1,21 @@
 """
 Vision Service: foydalanuvchi yuborgan chart screenshotini
-GPT-4o Vision orqali tahlil qiladi.
+Claude claude-opus-4-6 Vision orqali tahlil qiladi.
 """
 import base64
-
 import httpx
-from openai import AsyncOpenAI
+import anthropic
 
-from config import OPENAI_API_KEY
+from config import ANTHROPIC_API_KEY
 from utils.logger import logger
 
-_client = AsyncOpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 
 VISION_SYSTEM_PROMPT = """
 Sen professional forex va kripto texnik tahlilchisan.
 Foydalanuvchi sanga chart (grafik) rasmini yuboradi.
 
-Vazifang:
-1. Grafikda qaysi instrument (juftlik) ko'rinishini aniqlashga harakat qil.
-2. Timeframeni (1m, 5m, 1h, 4h, 1D va h.k.) aniqlashga harakat qil.
-3. Quyidagi tartibda o'zbek tilida tahlil yoz:
+Quyidagi tartibda o'zbek tilida tahlil yoz:
 
 📈 TREND: (Ko'tarilish / Tushish / Yon tomon)
 📍 Joriy zona: (Qo'llab-quvvatlash / Qarshilik / Neytral)
@@ -28,7 +24,6 @@ Vazifang:
 ⚡ Qisqa tavsiya: (Qaysi tomonga pozitsiya, TP/SL haqida umumiy fikr)
 ⚠️ Risk: (Bir qisqa ogohlantirish)
 
-Agar rasm chart emas yoki noaniq bo'lsa, buni ochiq ayt.
 Raqamlar to'qima — faqat grafikda ko'ringan narsalarni izohlang.
 Javob 250-350 so'zdan oshmasin.
 """
@@ -49,7 +44,7 @@ async def _download_photo(bot, file_id: str) -> bytes:
 
 async def analyze_chart_image(bot, file_id: str) -> str:
     if _client is None:
-        raise VisionAnalysisError("OpenAI API kaliti sozlanmagan.")
+        raise VisionAnalysisError("Anthropic API kaliti sozlanmagan.")
 
     try:
         image_bytes = await _download_photo(bot, file_id)
@@ -57,27 +52,26 @@ async def analyze_chart_image(bot, file_id: str) -> str:
         logger.error(f"Rasm yuklab olinmadi: {e}")
         raise VisionAnalysisError("Rasmni yuklab bo'lmadi. Qayta urinib ko'ring.")
 
-    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-
-    # Fayl hajmini tekshiramiz (20MB limit)
     if len(image_bytes) > 20 * 1024 * 1024:
         raise VisionAnalysisError("Rasm hajmi juda katta (max 20MB).")
 
+    image_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+
     try:
-        response = await _client.chat.completions.create(
-            model="gpt-4o",
+        response = _client.messages.create(
+            model="claude-opus-4-6",
             max_tokens=700,
-            temperature=0.4,
+            system=VISION_SYSTEM_PROMPT,
             messages=[
-                {"role": "system", "content": VISION_SYSTEM_PROMPT},
                 {
                     "role": "user",
                     "content": [
                         {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{image_b64}",
-                                "detail": "high",
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": image_b64,
                             },
                         },
                         {
@@ -85,11 +79,10 @@ async def analyze_chart_image(bot, file_id: str) -> str:
                             "text": "Ushbu forex/kripto chartini tahlil qiling.",
                         },
                     ],
-                },
+                }
             ],
         )
-        return response.choices[0].message.content.strip()
-
+        return response.content[0].text.strip()
     except Exception as e:
-        logger.error(f"Vision API xatosi: {e}")
-        raise VisionAnalysisError(f"Tahlil qilishda xato yuz berdi.")
+        logger.error(f"Claude Vision xatosi: {e}")
+        raise VisionAnalysisError("Tahlil qilishda xato yuz berdi.")
