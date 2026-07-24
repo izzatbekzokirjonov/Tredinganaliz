@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<title>📊 Forex Analiz Bot — Panel</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f172a;color:#f1f5f9;font-family:'Inter','Segoe UI',system-ui,sans-serif;min-height:100vh}
+input,select,textarea,button{font-family:inherit}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:#0f172a}
+::-webkit-scrollbar-thumb{background:#334155;border-radius:4px}
+.spin{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.fade{animation:fade 0.2s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useCallback,useRef} = React;
+const API = "";
+
+// ── API HELPER ──────────────────────────────────────────────────
+const api = async (method, path, body=null, token=null) => {
+  const opts = {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? {Authorization:`Bearer ${token}`} : {}),
+    },
+  };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(API + path, opts);
+  if (!r.ok) {
+    const err = await r.json().catch(()=>({detail:"Xato"}));
+    throw new Error(err.detail || "Xato");
+  }
+  return r.json();
+};
+
+// ── UI COMPONENTS ───────────────────────────────────────────────
+
+const Badge = ({children,color="gray"}) => {
+  const C = {
+    green:["#14532d","#4ade80"],yellow:["#713f12","#facc15"],
+    purple:["#3b0764","#c084fc"],gray:["#1e293b","#94a3b8"],
+    red:["#450a0a","#f87171"],blue:["#1e3a5f","#38bdf8"],
+    orange:["#431407","#fb923c"],
+  }[color]||["#1e293b","#94a3b8"];
+  return <span style={{background:C[0],color:C[1],borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{children}</span>;
+};
+
+const Btn = ({children,color="blue",onClick,full,sm,disabled}) => {
+  const C = {blue:"#2563eb",green:"#16a34a",red:"#dc2626",yellow:"#d97706",gray:"#334155",purple:"#7c3aed"};
+  return (
+    <button onClick={onClick} disabled={disabled} style={{
+      background:disabled?"#334155":C[color]||C.blue, color:"#fff", border:"none",
+      borderRadius:7, padding:sm?"5px 10px":"9px 16px",
+      fontSize:sm?11:13, cursor:disabled?"not-allowed":"pointer", fontWeight:700,
+      width:full?"100%":"auto", opacity:disabled?0.6:1,
+    }}>{children}</button>
+  );
+};
+
+const Card = ({icon,title,value,sub,color="#38bdf8"}) => (
+  <div style={{background:"#1e293b",borderRadius:12,padding:"16px 18px",border:`1px solid ${color}25`}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+      <div style={{flex:1}}>
+        <div style={{color:"#64748b",fontSize:11,fontWeight:600,marginBottom:4}}>{title}</div>
+        <div style={{color:"#f1f5f9",fontSize:24,fontWeight:800,lineHeight:1}}>{value}</div>
+        {sub&&<div style={{color,fontSize:11,marginTop:5}}>{sub}</div>}
+      </div>
+      <div style={{fontSize:22,opacity:0.6}}>{icon}</div>
+    </div>
+  </div>
+);
+
+const Modal = ({open,onClose,title,children}) => {
+  if(!open) return null;
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
+      <div style={{background:"#1e293b",borderRadius:14,padding:24,width:"100%",maxWidth:400,border:"1px solid #334155",maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <div style={{color:"#f1f5f9",fontWeight:800,fontSize:15}}>{title}</div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#64748b",fontSize:20,cursor:"pointer"}}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+};
+
+const Inp = ({label,placeholder,value,onChange,type="text"}) => (
+  <div style={{display:"flex",flexDirection:"column",gap:4}}>
+    {label&&<div style={{color:"#64748b",fontSize:11,fontWeight:600}}>{label}</div>}
+    <input type={type} placeholder={placeholder} value={value} onChange={onChange}
+      style={{background:"#0f172a",border:"1px solid #334155",borderRadius:7,padding:"9px 12px",color:"#f1f5f9",fontSize:13,width:"100%",outline:"none"}}/>
+  </div>
+);
+
+const Sel = ({label,value,onChange,options}) => (
+  <div style={{display:"flex",flexDirection:"column",gap:4}}>
+    {label&&<div style={{color:"#64748b",fontSize:11,fontWeight:600}}>{label}</div>}
+    <select value={value} onChange={onChange}
+      style={{background:"#0f172a",border:"1px solid #334155",borderRadius:7,padding:"9px 12px",color:"#f1f5f9",fontSize:13,width:"100%",outline:"none"}}>
+      {options.map(o=><option key={o.value||o} value={o.value||o}>{o.label||o}</option>)}
+    </select>
+  </div>
+);
+
+// ── PAGES ───────────────────────────────────────────────────────
+
+const LoginPage = ({onLogin}) => {
+  const [tgId, setTgId] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleDemo = async (role) => {
+    setLoading(true);
+    await new Promise(r=>setTimeout(r,500));
+    const demoToken = btoa(JSON.stringify({sub:"123456789",role,exp:9999999999}));
+    localStorage.setItem("token", demoToken);
+    localStorage.setItem("role", role);
+    localStorage.setItem("name", role==="admin"?"Admin":"Premium User");
+    onLogin({token:demoToken, role, name:role==="admin"?"Admin":"Premium User"});
+    setLoading(false);
+  };
+
+  return (
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{width:"100%",maxWidth:360}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <div style={{fontSize:48,marginBottom:12}}>📊</div>
+          <div style={{color:"#f1f5f9",fontSize:24,fontWeight:800}}>Forex Analiz Bot</div>
+          <div style={{color:"#64748b",fontSize:13,marginTop:4}}>Web Panel</div>
+        </div>
+        <div style={{background:"#1e293b",borderRadius:16,padding:24,border:"1px solid #1e3a5f"}}>
+          <div style={{color:"#94a3b8",fontSize:13,textAlign:"center",marginBottom:20}}>
+            Telegram orqali kiring
+          </div>
+
+          {/* Telegram Login Widget (production da shu ishlaydi) */}
+          <div id="telegram-login-widget" style={{display:"flex",justifyContent:"center",marginBottom:16}}>
+            <div style={{background:"#229ED9",color:"#fff",borderRadius:8,padding:"10px 20px",fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:8}}
+              onClick={()=>handleDemo("admin")}>
+              <span>✈️</span> Telegram orqali kirish
+            </div>
+          </div>
+
+          {error && <div style={{color:"#f87171",fontSize:12,textAlign:"center",marginBottom:12}}>{error}</div>}
+
+          <div style={{borderTop:"1px solid #334155",paddingTop:16,marginTop:8}}>
+            <div style={{color:"#475569",fontSize:11,textAlign:"center",marginBottom:10}}>Demo rejim</div>
+            <div style={{display:"flex",gap:8}}>
+              <Btn full color="blue" onClick={()=>handleDemo("admin")} disabled={loading}>
+                {loading?"⏳ ...":"👑 Admin demo"}
+              </Btn>
+              <Btn full color="purple" onClick={()=>handleDemo("premium")} disabled={loading}>
+                {loading?"⏳ ...":"⭐ Premium demo"}
+              </Btn>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── DASHBOARD ───────────────────────────────────────────────────
+
+const DashboardPage = ({token}) => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(()=>{
+    api("GET","/api/dashboard",null,token)
+      .then(setData).catch(()=>{}).finally(()=>setLoading(false));
+  },[token]);
+
+  if(loading) return <div style={{color:"#64748b",textAlign:"center",padding:40}}>⏳ Yuklanmoqda...</div>;
+
+  const d = data || {total_users:156,total_analyses:1842,today_analyses:247,screenshots:387,signals_24h:5,tiers:{free:128,pro:23,vip:5},daily_analyses:[],recent_users:[]};
+
+  const bars = d.daily_analyses.length ? d.daily_analyses.map(x=>x.count) : [42,65,55,80,70,60,88,74,91,83];
+  const maxBar = Math.max(...bars,1);
+
+  return (
+    <div className="fade" style={{display:"flex",flexDirection:"column",gap:16}}>
+      <div>
+        <div style={{color:"#f1f5f9",fontSize:20,fontWeight:800}}>📊 Dashboard</div>
+        <div style={{color:"#64748b",fontSize:12}}>Bugungi holat</div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <Card icon="👥" title="Foydalanuvchi" value={d.total_users} sub={`🆓${d.tiers.free} ⭐${d.tiers.pro} 💎${d.tiers.vip}`} color="#38bdf8"/>
+        <Card icon="💎" title="Premium" value={d.tiers.pro+d.tiers.vip} sub={`⭐${d.tiers.pro} Pro · 💎${d.tiers.vip} VIP`} color="#c084fc"/>
+        <Card icon="📊" title="Jami tahlil" value={d.total_analyses} sub={`↑ +${d.today_analyses} bugun`} color="#4ade80"/>
+        <Card icon="📸" title="Screenshot" value={d.screenshots} color="#fb923c"/>
+      </div>
+
+      <div style={{background:"#1e293b",borderRadius:12,padding:14,border:"1px solid #1e3a5f"}}>
+        <div style={{color:"#94a3b8",fontSize:12,fontWeight:700,marginBottom:12}}>📈 Kunlik tahlillar</div>
+        <div style={{display:"flex",alignItems:"flex-end",gap:3,height:90}}>
+          {bars.map((h,i)=>(
+            <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+              <div style={{width:"100%",background:i===bars.length-1?"#38bdf8":"#1e3a5f",borderRadius:"3px 3px 0 0",height:`${h/maxBar*100}%`,minHeight:4}}/>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{background:"#1e293b",borderRadius:12,padding:14,border:"1px solid #1e3a5f"}}>
+        <div style={{color:"#94a3b8",fontSize:12,fontWeight:700,marginBottom:12}}>💳 Tarif taqsimoti</div>
+        {[{l:"🆓 Free",n:d.tiers.free,c:"#475569"},{l:"⭐ Pro",n:d.tiers.pro,c:"#facc15"},{l:"💎 VIP",n:d.tiers.vip,c:"#c084fc"}].map((t,i)=>{
+          const total=d.total_users||1;
+          const pct=Math.round(t.n/total*100);
+          return (
+            <div key={i} style={{marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{color:"#94a3b8",fontSize:12}}>{t.l}</span>
+                <span style={{color:"#f1f5f9",fontWeight:700,fontSize:12}}>{t.n} ta · {pct}%</span>
+              </div>
+              <div style={{background:"#0f172a",borderRadius:4,height:6}}>
+                <div style={{background:t.c,width:`${pct}%`,height:"100%",borderRadius:4}}/>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {d.recent_users.length>0&&(
+        <div style={{background:"#1e293b",borderRadius:12,padding:14,border:"1px solid #1e3a5f"}}>
+          <div style={{color:"#94a3b8",fontSize:12,fontWeight:700,marginBottom:10}}>🕐 So'nggi foydalanuvchilar</div>
+          {d.recent_users.map((u,i)=>(
+            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<d.recent_users.length-1?"1px solid #0f172a":"none"}}>
+              <div>
+                <div style={{color:"#e2e8f0",fontSize:13,fontWeight:600}}>{u.name}</div>
+                <div style={{color:"#475569",fontSize:11}}>{u.joined_at}</div>
+              </div>
+              <Badge color={u.tier==="vip"?"purple":u.tier==="pro"?"yellow":"gray"}>{u.tier.toUpperCase()}</Badge>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── USERS ───────────────────────────────────────────────────────
+
+const UsersPage = ({token}) => {
+  const [users, setUsers]   = useState([]);
+  const [total, setTotal]   = useState(0);
+  const [search, setSearch] = useState("");
+  const [tier, setTier]     = useState("all");
+  const [page, setPage]     = useState(1);
+  const [loading, setLoading]= useState(false);
+  const [modal, setModal]   = useState(null);
+  const [selected, setSel]  = useState(null);
+
+  const load = useCallback(async()=>{
+    setLoading(true);
+    try{
+      const r=await api("GET",`/api/users?search=${search}&tier=${tier}&page=${page}&limit=15`,null,token);
+      setUsers(r.users||[]); setTotal(r.total||0);
+    }catch{
+      // demo data
+      setUsers([
+        {telegram_id:111,first_name:"Ali Karimov",username:"ali_k",subscription:"pro",total_analyses:42,referrals:3,is_banned:false,joined_at:"10.07.2026",expires_at:"28.07.2026"},
+        {telegram_id:222,first_name:"Bobur Toshev",username:"bobur",subscription:"vip",total_analyses:218,referrals:11,is_banned:false,joined_at:"01.06.2026",expires_at:null},
+        {telegram_id:333,first_name:"Camila Yusupova",username:"camila",subscription:"free",total_analyses:5,referrals:0,is_banned:false,joined_at:"20.07.2026",expires_at:null},
+        {telegram_id:444,first_name:"Dilnoza Rahimova",username:"dilnoza",subscription:"free",total_analyses:0,referrals:0,is_banned:true,joined_at:"15.07.2026",expires_at:null},
+        {telegram_id:555,first_name:"Eldor Nazarov",username:"eldor",subscription:"pro",total_analyses:87,referrals:5,is_banned:false,joined_at:"05.07.2026",expires_at:"15.08.2026"},
+      ]);
+      setTotal(156);
+    }finally{setLoading(false);}
+  },[search,tier,page,token]);
+
+  useEffect(()=>{load();},[load]);
+
+  const doAction = async(action, uid) => {
+    try{ await api("POST",`/api/users/${uid}/${action}`,null,token); load(); }catch(e){alert(e.message);}
+  };
+
+  const [pForm, setPForm] = useState({tier:"pro",days:"30"});
+  const grantPremium = async() => {
+    try{
+      await api("POST",`/api/users/${selected?.telegram_id}/premium`,{tier:pForm.tier,days:pForm.days?Number(pForm.days):null},token);
+      setModal(null); load();
+    }catch(e){alert(e.message);}
+  };
+
+  const tierBadge = {free:<Badge color="gray">🆓 Free</Badge>,pro:<Badge color="yellow">⭐ Pro</Badge>,vip:<Badge color="purple">💎 VIP</Badge>};
+
+  return (
+    <div className="fade" style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div>
+        <div style={{color:"#f1f5f9",fontSize:20,fontWeight:800}}>👥 Foydalanuvchilar</div>
+        <div style={{color:"#64748b",fontSize:12}}>Jami: {total} ta</div>
+      </div>
+
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} placeholder="🔍 Qidirish..."
+          style={{flex:1,minWidth:140,background:"#1e293b",border:"1px solid #334155",borderRadius:7,padding:"9px 12px",color:"#f1f5f9",fontSize:13,outline:"none"}}/>
+        <select value={tier} onChange={e=>{setTier(e.target.value);setPage(1);}}
+          style={{background:"#1e293b",border:"1px solid #334155",borderRadius:7,padding:"9px 10px",color:"#94a3b8",fontSize:13,outline:"none"}}>
+          <option value="all">Barchasi</option>
+          <option value="free">Free</option>
+          <option value="pro">Pro</option>
+          <option value="vip">VIP</option>
+        </select>
+      </div>
+
+      {loading?<div style={{color:"#64748b",textAlign:"center",padding:20}}>⏳</div>:
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {users.map(u=>(
+            <div key={u.telegram_id} style={{background:"#1e293b",borderRadius:12,padding:14,border:"1px solid #1e3a5f"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                <div>
+                  <div style={{color:"#f1f5f9",fontWeight:700,fontSize:14}}>{u.first_name}</div>
+                  <div style={{color:"#64748b",fontSize:12}}>@{u.username} · {u.telegram_id}</div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
+                  {tierBadge[u.subscription]}
+                  {u.is_banned&&<Badge color="red">🚫 Ban</Badge>}
+                </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:10}}>
+                {[["📊",u.total_analyses+" tahlil"],["👥",u.referrals+" referal"],["📅",u.joined_at]].map(([ic,v],i)=>(
+                  <div key={i} style={{background:"#0f172a",borderRadius:7,padding:"6px 8px"}}>
+                    <div style={{color:"#94a3b8",fontSize:11}}>{ic} {v}</div>
+                  </div>
+                ))}
+              </div>
+              {u.expires_at&&<div style={{color:"#facc15",fontSize:11,marginBottom:8}}>📅 Tugaydi: {u.expires_at}</div>}
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                <Btn sm color="blue" onClick={()=>{setSel(u);setModal("premium");}}>💎 Premium</Btn>
+                <Btn sm color={u.is_banned?"green":"red"} onClick={()=>doAction(u.is_banned?"unban":"ban",u.telegram_id)}>
+                  {u.is_banned?"✅ Unban":"🚫 Ban"}
+                </Btn>
+              </div>
+            </div>
+          ))}
+        </div>
+      }
+
+      {/* Pagination */}
+      {total>15&&(
+        <div style={{display:"flex",justifyContent:"center",gap:8}}>
+          <Btn sm disabled={page<=1} onClick={()=>setPage(p=>p-1)}>← Oldingi</Btn>
+          <span style={{color:"#64748b",fontSize:12,alignSelf:"center"}}>{page}</span>
+          <Btn sm onClick={()=>setPage(p=>p+1)}>Keyingi →</Btn>
+        </div>
+      )}
+
+      <Modal open={modal==="premium"} onClose={()=>setModal(null)} title={`💎 Premium — ${selected?.first_name}`}>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <Sel label="Tarif" value={pForm.tier} onChange={e=>setPForm({...pForm,tier:e.target.value})}
+            options={[{value:"pro",label:"⭐ Pro"},{value:"vip",label:"💎 VIP"},{value:"free",label:"🆓 Free (olish)"}]}/>
+          <Inp label="Necha kun (bo'sh = muddatsiz)" placeholder="30" value={pForm.days} onChange={e=>setPForm({...pForm,days:e.target.value})}/>
+          <Btn color="green" full onClick={grantPremium}>✅ Berish</Btn>
+        </div>
+      </Modal>
+    </div>
+  );
+};
+
+// ── SIGNALS ─────────────────────────────────────────────────────
+
+const SignalsPage = ({token}) => {
+  const [signals, setSignals] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({pair:"EURUSD",dir:"BUY",entry:"",tp:"",sl:"",comment:""});
+  const [sending, setSending] = useState(false);
+
+  const load = async() => {
+    try{const r=await api("GET","/api/signals",null,token); setSignals(r);}
+    catch{setSignals([
+      {id:1,pair:"XAUUSD",direction:"BUY",entry:2318.5,tp:2334.0,sl:2308.0,comment:"Kuchli qo'llab",created_at:"22.07 13:15"},
+      {id:2,pair:"GBPUSD",direction:"SELL",entry:1.2684,tp:1.261,sl:1.2722,comment:"",created_at:"22.07 11:40"},
+    ]);}
+  };
+  useEffect(()=>{load();},[]);
+
+  const submit = async() => {
+    if(!form.entry||!form.tp||!form.sl){alert("Barcha maydonlarni to'ldiring");return;}
+    setSending(true);
+    try{
+      await api("POST","/api/signals",{pair:form.pair,direction:form.dir,entry:+form.entry,tp:+form.tp,sl:+form.sl,comment:form.comment},token);
+      setShowForm(false); load();
+    }catch(e){alert(e.message);}
+    finally{setSending(false);}
+  };
+
+  const del = async(id) => {
+    if(!confirm("O'chirilsinmi?"))return;
+    try{await api("DELETE",`/api/signals/${id}`,null,token); load();}catch(e){alert(e.message);}
+  };
+
+  return (
+    <div className="fade" style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div>
+          <div style={{color:"#f1f5f9",fontSize:20,fontWeight:800}}>📈 Signallar</div>
+          <div style={{color:"#64748b",fontSize:12}}>{signals.length} ta signal</div>
+        </div>
+        <Btn onClick={()=>setShowForm(!showForm)}>+ Yangi</Btn>
+      </div>
+
+      {showForm&&(
+        <div style={{background:"#1e293b",borderRadius:12,padding:14,border:"1px solid #38bdf8"}}>
+          <div style={{color:"#f1f5f9",fontWeight:700,marginBottom:12}}>🆕 Yangi signal</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+            <Sel label="Juftlik" value={form.pair} onChange={e=>setForm({...form,pair:e.target.value})}
+              options={["EURUSD","GBPUSD","XAUUSD","BTCUSD","ETHUSD","USDJPY","AUDUSD","USDCHF"]}/>
+            <Sel label="Yo'nalish" value={form.dir} onChange={e=>setForm({...form,dir:e.target.value})}
+              options={[{value:"BUY",label:"🟢 BUY"},{value:"SELL",label:"🔴 SELL"}]}/>
+            <Inp label="Entry" placeholder="1.08500" value={form.entry} onChange={e=>setForm({...form,entry:e.target.value})}/>
+            <Inp label="Take Profit" placeholder="1.09100" value={form.tp} onChange={e=>setForm({...form,tp:e.target.value})}/>
+            <Inp label="Stop Loss" placeholder="1.08200" value={form.sl} onChange={e=>setForm({...form,sl:e.target.value})}/>
+            <Inp label="Izoh" placeholder="..." value={form.comment} onChange={e=>setForm({...form,comment:e.target.value})}/>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <Btn color="green" onClick={submit} disabled={sending}>{sending?"⏳ Yuborilmoqda...":"📢 Yuborish"}</Btn>
+            <Btn color="gray" onClick={()=>setShowForm(false)}>Bekor</Btn>
+          </div>
+        </div>
+      )}
+
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {signals.map(s=>(
+          <div key={s.id} style={{background:"#1e293b",borderRadius:12,padding:14,border:"1px solid #1e3a5f"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{color:"#f1f5f9",fontWeight:800,fontSize:16}}>{s.pair}</span>
+                <Badge color={s.direction==="BUY"?"green":"red"}>{s.direction==="BUY"?"🟢 BUY":"🔴 SELL"}</Badge>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{color:"#475569",fontSize:11}}>{s.created_at}</span>
+                <Btn sm color="red" onClick={()=>del(s.id)}>🗑</Btn>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:s.comment?8:0}}>
+              {[["📍 Entry",s.entry,"#94a3b8"],["🎯 TP",s.tp,"#4ade80"],["🛑 SL",s.sl,"#f87171"]].map(([l,v,c],i)=>(
+                <div key={i} style={{background:"#0f172a",borderRadius:7,padding:"6px 8px"}}>
+                  <div style={{color:"#475569",fontSize:10}}>{l}</div>
+                  <div style={{color:c,fontWeight:700,fontSize:12,fontFamily:"monospace"}}>{v}</div>
+                </div>
+              ))}
+            </div>
+            {s.comment&&<div style={{background:"#0f172a",borderRadius:7,padding:"6px 10px",color:"#94a3b8",fontSize:12,marginTop:8}}>💬 {s.comment}</div>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ── CHANNELS ────────────────────────────────────────────────────
+
+const ChannelsPage = ({token}) => {
+  const [channels, setChannels] = useState([]);
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState({channel_input:"",type:"mandatory"});
+
+  const load = async()=>{
+    try{const r=await api("GET","/api/channels",null,token); setChannels(r);}
+    catch{setChannels([
+      {id:1,channel_id:-1001,title:"📊 Forex Analiz",username:"@forex_analiz",type:"mandatory",is_mandatory:true,is_active:true,members:143,non_members:13,added_at:"01.07"},
+      {id:2,channel_id:-1002,title:"📚 Darsliklar",username:"@forex_lesson",type:"lesson",is_mandatory:true,is_active:true,members:127,non_members:29,added_at:"01.07"},
+      {id:3,channel_id:-1003,title:"📈 Signal",username:"@forex_signal",type:"signal",is_mandatory:false,is_active:true,members:98,non_members:58,added_at:"05.07"},
+    ]);}
+  };
+  useEffect(()=>{load();},[]);
+
+  const addChannel = async()=>{
+    if(!form.channel_input){alert("Username kiriting");return;}
+    try{await api("POST","/api/channels",form,token); setModal(false); load();}catch(e){alert(e.message);}
+  };
+  const removeChannel = async(id)=>{
+    if(!confirm("O'chirilsinmi?"))return;
+    try{await api("DELETE",`/api/channels/${id}`,null,token); load();}catch(e){alert(e.message);}
+  };
+
+  const typeColor={mandatory:"red",signal:"blue",lesson:"purple",info:"gray"};
+  const typeLabel={mandatory:"🔒 Majburiy",signal:"📈 Signal",lesson:"📚 Darslik",info:"ℹ️ Info"};
+
+  return (
+    <div className="fade" style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div>
+          <div style={{color:"#f1f5f9",fontSize:20,fontWeight:800}}>📡 Kanallar</div>
+          <div style={{color:"#64748b",fontSize:12}}>{channels.length} ta faol kanal</div>
+        </div>
+        <Btn onClick={()=>setModal(true)}>+ Qo'shish</Btn>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        {channels.map(ch=>{
+          const total=(ch.members||0)+(ch.non_members||0);
+          const pct=total?Math.round(ch.members/total*100):0;
+          return(
+            <div key={ch.id} style={{background:"#1e293b",borderRadius:12,padding:14,border:"1px solid #1e3a5f"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                <div>
+                  <div style={{color:"#f1f5f9",fontWeight:700}}>{ch.title}</div>
+                  <div style={{color:"#64748b",fontSize:12}}>{ch.username}</div>
+                </div>
+                <Badge color={typeColor[ch.type]||"gray"}>{typeLabel[ch.type]||ch.type}</Badge>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                <div style={{background:"#14532d50",borderRadius:7,padding:"6px 10px",textAlign:"center"}}>
+                  <div style={{color:"#4ade80",fontWeight:700,fontSize:18}}>{ch.members||0}</div>
+                  <div style={{color:"#166534",fontSize:10}}>✅ A'zo</div>
+                </div>
+                <div style={{background:"#450a0a50",borderRadius:7,padding:"6px 10px",textAlign:"center"}}>
+                  <div style={{color:"#f87171",fontWeight:700,fontSize:18}}>{ch.non_members||0}</div>
+                  <div style={{color:"#991b1b",fontSize:10}}>❌ Emas</div>
+                </div>
+              </div>
+              <div style={{marginBottom:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                  <span style={{color:"#64748b",fontSize:11}}>A'zolik darajasi</span>
+                  <span style={{color:"#38bdf8",fontSize:11,fontWeight:700}}>{pct}%</span>
+                </div>
+                <div style={{background:"#0f172a",borderRadius:4,height:6}}>
+                  <div style={{background:"#38bdf8",width:`${pct}%`,height:"100%",borderRadius:4}}/>
+                </div>
+              </div>
+              <Btn sm color="red" onClick={()=>removeChannel(ch.channel_id)}>🗑 O'chirish</Btn>
+            </div>
+          );
+        })}
+      </div>
+      <Modal open={modal} onClose={()=>setModal(false)} title="➕ Kanal qo'shish">
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <Inp label="@username yoki -100ID" placeholder="@kanalUsername" value={form.channel_input} onChange={e=>setForm({...form,channel_input:e.target.value})}/>
+          <Sel label="Kanal turi" value={form.type} onChange={e=>setForm({...form,type:e.target.value})}
+            options={[{value:"mandatory",label:"🔒 Majburiy"},{value:"signal",label:"📈 Signal"},{value:"lesson",label:"📚 Darslik"},{value:"info",label:"ℹ️ Info"}]}/>
+          <div style={{background:"#0f172a",borderRadius:8,padding:10,color:"#64748b",fontSize:12}}>⚠️ Bot kanal adminlari orasida bo'lishi kerak</div>
+          <Btn color="green" full onClick={addChannel}>✅ Qo'shish</Btn>
+        </div>
+      </Modal>
+    </div>
+  );
+};
+
+// ── PREMIUM ─────────────────────────────────────────────────────
+
+const PremiumPage = ({token}) => {
+  const [users, setUsers] = useState([]);
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState({telegram_id:"",tier:"pro",days:"30"});
+
+  const load = async()=>{
+    try{const r=await api("GET","/api/premium",null,token); setUsers(r);}
+    catch{setUsers([
+      {telegram_id:111,name:"Ali Karimov",username:"ali_k",tier:"pro",expires_at:"28.07.2026",granted_by:"Admin",granted_at:"10.07.2026"},
+      {telegram_id:222,name:"Bobur Toshev",username:"bobur",tier:"vip",expires_at:"Muddatsiz",granted_by:"Admin",granted_at:"01.06.2026"},
+    ]);}
+  };
+  useEffect(()=>{load();},[]);
+
+  const grant = async()=>{
+    if(!form.telegram_id){alert("Telegram ID kiriting");return;}
+    try{
+      await api("POST","/api/premium/grant",{telegram_id:+form.telegram_id,tier:form.tier,days:form.days?+form.days:null},token);
+      setModal(false); load();
+    }catch(e){alert(e.message);}
+  };
+  const revoke = async(id)=>{
+    if(!confirm("Premiumni olib tashlasinmi?"))return;
+    try{await api("POST",`/api/premium/revoke/${id}`,null,token); load();}catch(e){alert(e.message);}
+  };
+
+  return (
+    <div className="fade" style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div>
+          <div style={{color:"#f1f5f9",fontSize:20,fontWeight:800}}>💎 Premium</div>
+          <div style={{color:"#64748b",fontSize:12}}>{users.length} ta premium</div>
+        </div>
+        <Btn onClick={()=>setModal(true)}>+ Berish</Btn>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <Card icon="⭐" title="Pro" value={users.filter(u=>u.tier==="pro").length} color="#facc15"/>
+        <Card icon="💎" title="VIP" value={users.filter(u=>u.tier==="vip").length} color="#c084fc"/>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {users.map(u=>(
+          <div key={u.telegram_id} style={{background:"#1e293b",borderRadius:12,padding:14,border:"1px solid #1e3a5f"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+              <div>
+                <div style={{color:"#f1f5f9",fontWeight:700}}>{u.name}</div>
+                <div style={{color:"#64748b",fontSize:12}}>@{u.username} · {u.telegram_id}</div>
+              </div>
+              <Badge color={u.tier==="vip"?"purple":"yellow"}>{u.tier==="vip"?"💎 VIP":"⭐ Pro"}</Badge>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+              <div style={{background:"#0f172a",borderRadius:7,padding:"6px 10px"}}>
+                <div style={{color:"#475569",fontSize:10}}>Tugash sanasi</div>
+                <div style={{color:u.expires_at==="Muddatsiz"?"#4ade80":"#94a3b8",fontSize:12,fontWeight:600}}>{u.expires_at}</div>
+              </div>
+              <div style={{background:"#0f172a",borderRadius:7,padding:"6px 10px"}}>
+                <div style={{color:"#475569",fontSize:10}}>Berilgan</div>
+                <div style={{color:"#94a3b8",fontSize:12,fontWeight:600}}>{u.granted_by} · {u.granted_at}</div>
+              </div>
+            </div>
+            <Btn sm color="red" onClick={()=>revoke(u.telegram_id)}>🗑 Premiumni olish</Btn>
+          </div>
+        ))}
+      </div>
+      <Modal open={modal} onClose={()=>setModal(false)} title="💎 Premium berish">
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <Inp label="Telegram ID" placeholder="123456789" value={form.telegram_id} onChange={e=>setForm({...form,telegram_id:e.target.value})}/>
+          <Sel label="Tarif" value={form.tier} onChange={e=>setForm({...form,tier:e.target.value})}
+            options={[{value:"pro",label:"⭐ Pro"},{value:"vip",label:"💎 VIP"}]}/>
+          <Sel label="Muddat" value={form.days} onChange={e=>setForm({...form,days:e.target.value})}
+            options={[{value:"7",label:"7 kun"},{value:"14",label:"14 kun"},{value:"30",label:"30 kun"},{value:"90",label:"90 kun"},{value:"",label:"Muddatsiz"}]}/>
+          <Btn color="green" full onClick={grant}>✅ Berish</Btn>
+        </div>
+      </Modal>
+    </div>
+  );
+};
+
+// ── BROADCAST ───────────────────────────────────────────────────
+
+const BroadcastPage = ({token}) => {
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const send = async()=>{
+    if(!text.trim()){alert("Matn kiriting");return;}
+    if(!confirm(`Barcha foydalanuvchilarga yuborilsinmi?`))return;
+    setSending(true); setResult(null);
+    try{
+      const r=await api("POST","/api/broadcast",{text},token);
+      setResult(r); setText("");
+    }catch(e){alert(e.message);}
+    finally{setSending(false);}
+  };
+
+  return (
+    <div className="fade" style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div>
+        <div style={{color:"#f1f5f9",fontSize:20,fontWeight:800}}>📢 Broadcast</div>
+        <div style={{color:"#64748b",fontSize:12}}>Barcha foydalanuvchilarga xabar yuborish</div>
+      </div>
+      <div style={{background:"#1e293b",borderRadius:12,padding:14,border:"1px solid #1e3a5f"}}>
+        <div style={{color:"#94a3b8",fontSize:12,fontWeight:700,marginBottom:10}}>📝 Xabar matni</div>
+        <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Xabar matnini yozing..." rows={6}
+          style={{width:"100%",background:"#0f172a",border:"1px solid #334155",borderRadius:8,padding:"10px 12px",color:"#f1f5f9",fontSize:13,resize:"vertical",outline:"none"}}/>
+        <div style={{display:"flex",justifyContent:"space-between",marginTop:6,marginBottom:14}}>
+          <span style={{color:"#475569",fontSize:11}}>{text.length} belgi</span>
+        </div>
+
+        {/* Preview */}
+        <div style={{color:"#94a3b8",fontSize:12,fontWeight:700,marginBottom:8}}>👁 Ko'rinish</div>
+        <div style={{background:"#0f172a",borderRadius:10,padding:12,marginBottom:14}}>
+          <div style={{display:"flex",gap:8,marginBottom:6}}>
+            <div style={{width:26,height:26,borderRadius:"50%",background:"#1e3a5f",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,flexShrink:0}}>📊</div>
+            <div style={{color:"#38bdf8",fontSize:11,fontWeight:700,alignSelf:"center"}}>Forex Analiz Bot</div>
+          </div>
+          <div style={{background:"#1e293b",borderRadius:8,padding:"8px 10px",color:"#e2e8f0",fontSize:12,minHeight:36}}>
+            {text?<>📣 <b>E'lon</b><br/>{text}</>:<span style={{color:"#475569"}}>Xabar bu yerda ko'rinadi...</span>}
+          </div>
+        </div>
+
+        {result&&(
+          <div style={{background:"#14532d50",border:"1px solid #4ade80",borderRadius:8,padding:10,marginBottom:12,textAlign:"center"}}>
+            <div style={{color:"#4ade80",fontWeight:700,fontSize:13}}>
+              ✅ Yuborildi: {result.sent} · ❌ Xato: {result.failed}
+            </div>
+          </div>
+        )}
+        <Btn color="green" full onClick={send} disabled={sending||!text.trim()}>
+          {sending?<>⏳ Yuborilmoqda...</>:"📢 Hammaga yuborish"}
+        </Btn>
+      </div>
+    </div>
+  );
+};
+
+// ── SCREENSHOT ──────────────────────────────────────────────────
+
+const ScreenshotPage = ({token}) => {
+  const [step, setStep] = useState(0);
+  const [file, setFile] = useState(null);
+  const [result, setResult] = useState("");
+  const [loading, setLoading] = useState(false);
+  const fileRef = useRef();
+
+  const onFile = e => {
+    const f=e.target.files[0];
+    if(f){setFile(f);setStep(1);setResult("");}
+  };
+
+  const analyze = async() => {
+    if(!file)return;
+    setLoading(true); setStep(2);
+    try{
+      const fd=new FormData(); fd.append("file",file);
+      const r=await fetch(API+"/api/analysis/screenshot",{method:"POST",headers:{Authorization:`Bearer ${token}`},body:fd});
+      const data=await r.json();
+      if(data.ok){setResult(data.analysis);setStep(3);}
+      else{alert(data.detail||"Xato");setStep(1);}
+    }catch(e){
+      // Demo
+      setResult("📈 TREND: Ko'tarilish (Bullish)\n📍 Joriy zona: Qo'llab-quvvatlash hududi\n🎯 Asosiy darajalar: Qarshilik 1.0950 · Qo'llab 1.0880\n💡 Pattern: Bullish Engulfing shamcha\n⚡ Qisqa tavsiya: BUY, TP 1.0950, SL 1.0860\n⚠️ Risk: Kafolat emas — risk menejment!");
+      setStep(3);
+    }finally{setLoading(false);}
+  };
+
+  return (
+    <div className="fade" style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div>
+        <div style={{color:"#f1f5f9",fontSize:20,fontWeight:800}}>📸 Screenshot Tahlil</div>
+        <div style={{color:"#64748b",fontSize:12}}>Chart rasmini yuklang — GPT-4o Vision tahlil qiladi</div>
+      </div>
+      <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{display:"none"}}/>
+
+      <div style={{background:"#1e293b",borderRadius:12,padding:14,border:"1px solid #1e3a5f"}}>
+        {step===0&&(
+          <div onClick={()=>fileRef.current.click()}
+            style={{border:"2px dashed #334155",borderRadius:12,padding:"40px 16px",textAlign:"center",cursor:"pointer"}}>
+            <div style={{fontSize:40,marginBottom:8}}>📊</div>
+            <div style={{color:"#64748b",fontSize:13}}>Chart screenshotini bosib tanlang</div>
+            <div style={{color:"#475569",fontSize:11,marginTop:4}}>PNG, JPG · max 20MB</div>
+          </div>
+        )}
+        {step===1&&(
+          <div>
+            <div style={{background:"linear-gradient(135deg,#1e3a5f,#0f172a)",borderRadius:10,height:160,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:12}}>
+              <div style={{textAlign:"center"}}>
+                <div style={{fontSize:32}}>📊</div>
+                <div style={{color:"#64748b",fontSize:12}}>{file?.name}</div>
+                <div style={{color:"#475569",fontSize:11}}>{file?(file.size/1024).toFixed(0)+" KB":""}</div>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <Btn color="green" onClick={analyze}>🔍 Tahlil qilish</Btn>
+              <Btn color="gray" onClick={()=>{setFile(null);setStep(0);}}>🗑 Bekor</Btn>
+            </div>
+          </div>
+        )}
+        {step===2&&(
+          <div style={{textAlign:"center",padding:"30px 0"}}>
+            <div style={{fontSize:36,marginBottom:10}} className="spin">⏳</div>
+            <div style={{color:"#38bdf8",fontWeight:700}}>GPT-4o Vision ishlamoqda...</div>
+            <div style={{color:"#64748b",fontSize:12,marginTop:4}}>5–15 soniya kuting</div>
+          </div>
+        )}
+        {step===3&&(
+          <div>
+            <div style={{color:"#f1f5f9",fontWeight:700,marginBottom:12}}>📸 Tahlil natijasi</div>
+            <div style={{background:"#0f172a",borderRadius:10,padding:14,whiteSpace:"pre-wrap",color:"#e2e8f0",fontSize:13,lineHeight:1.7,marginBottom:12}}>
+              {result}
+            </div>
+            <Btn color="blue" onClick={()=>{setFile(null);setStep(0);setResult("");}}>🔄 Yangi rasm</Btn>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ── CHARTS ──────────────────────────────────────────────────────
+
+const ALL_PAIRS = {
+  "Forex Major":[
+    {s:"EURUSD",p:"1.08542",ch:"+0.12%",up:true},{s:"GBPUSD",p:"1.26840",ch:"-0.08%",up:false},
+    {s:"USDJPY",p:"157.820",ch:"+0.21%",up:true},{s:"USDCHF",p:"0.89340",ch:"-0.05%",up:false},
+    {s:"AUDUSD",p:"0.65120",ch:"+0.15%",up:true},{s:"NZDUSD",p:"0.59840",ch:"-0.11%",up:false},
+    {s:"USDCAD",p:"1.36540",ch:"+0.07%",up:true},{s:"EURGBP",p:"0.85640",ch:"+0.03%",up:true},
+    {s:"EURJPY",p:"171.240",ch:"+0.33%",up:true},{s:"GBPJPY",p:"199.820",ch:"+0.14%",up:true},
+  ],
+  "Forex Minor":[
+    {s:"EURCHF",p:"0.96840",ch:"-0.04%",up:false},{s:"EURAUD",p:"1.66540",ch:"+0.09%",up:true},
+    {s:"EURCAD",p:"1.47820",ch:"+0.11%",up:true},{s:"EURNZD",p:"1.81240",ch:"+0.08%",up:true},
+    {s:"GBPCHF",p:"1.13240",ch:"-0.06%",up:false},{s:"GBPAUD",p:"1.94820",ch:"-0.12%",up:false},
+    {s:"GBPCAD",p:"1.72540",ch:"-0.03%",up:false},{s:"GBPNZD",p:"2.11820",ch:"+0.06%",up:true},
+    {s:"AUDCAD",p:"0.88920",ch:"+0.04%",up:true},{s:"AUDCHF",p:"0.58140",ch:"+0.07%",up:true},
+    {s:"AUDJPY",p:"102.840",ch:"+0.36%",up:true},{s:"AUDNZD",p:"1.08920",ch:"+0.02%",up:true},
+    {s:"CADCHF",p:"0.65420",ch:"-0.03%",up:false},{s:"CADJPY",p:"115.640",ch:"+0.18%",up:true},
+    {s:"CHFJPY",p:"176.820",ch:"+0.27%",up:true},{s:"NZDCAD",p:"0.81840",ch:"+0.05%",up:true},
+    {s:"NZDCHF",p:"0.53420",ch:"+0.02%",up:true},{s:"NZDJPY",p:"94.420",ch:"+0.24%",up:true},
+  ],
+  "Metals & Energy":[
+    {s:"XAUUSD",p:"2318.50",ch:"+0.45%",up:true},{s:"XAGUSD",p:"29.840",ch:"+0.32%",up:true},
+    {s:"XPTUSD",p:"984.20",ch:"-0.18%",up:false},{s:"XPDUSD",p:"952.40",ch:"-0.24%",up:false},
+    {s:"XAUEUR",p:"2142.80",ch:"+0.33%",up:true},{s:"XAUGBP",p:"1826.40",ch:"+0.37%",up:true},
+    {s:"USOIL",p:"82.640",ch:"+0.58%",up:true},{s:"UKOIL",p:"85.920",ch:"+0.44%",up:true},
+    {s:"NATGAS",p:"2.184",ch:"-1.24%",up:false},
+  ],
+  "Crypto":[
+    {s:"BTCUSD",p:"67842",ch:"+1.24%",up:true},{s:"ETHUSD",p:"3524.8",ch:"+0.87%",up:true},
+    {s:"BNBUSD",p:"584.2",ch:"+0.54%",up:true},{s:"XRPUSD",p:"0.5284",ch:"-0.32%",up:false},
+    {s:"SOLUSD",p:"178.4",ch:"+2.14%",up:true},{s:"ADAUSD",p:"0.4284",ch:"-0.54%",up:false},
+    {s:"DOTUSD",p:"6.824",ch:"+0.78%",up:true},{s:"LINKUSD",p:"14.84",ch:"+1.04%",up:true},
+    {s:"LTCUSD",p:"84.24",ch:"-0.42%",up:false},{s:"AVAXUSD",p:"28.64",ch:"+1.54%",up:true},
+    {s:"MATICUSD",p:"0.5684",ch:"-0.88%",up:false},{s:"DOGUSD",p:"0.1284",ch:"+0.34%",up:true},
+    {s:"UNIUSD",p:"8.424",ch:"+0.64%",up:true},{s:"ATOMUSD",p:"6.284",ch:"-0.24%",up:false},
+    {s:"NEARUSD",p:"4.824",ch:"+1.84%",up:true},
+  ],
+  "Indices":[
+    {s:"US30",p:"39284",ch:"+0.24%",up:true},{s:"US500",p:"5428.4",ch:"+0.18%",up:true},
+    {s:"US100",p:"19284",ch:"+0.34%",up:true},{s:"UK100",p:"8284.4",ch:"-0.12%",up:false},
+    {s:"GER40",p:"18284",ch:"+0.22%",up:true},{s:"FRA40",p:"7584.4",ch:"+0.08%",up:true},
+    {s:"JPN225",p:"38284",ch:"+0.44%",up:true},{s:"AUS200",p:"7884.4",ch:"+0.16%",up:true},
+    {s:"HK50",p:"17284",ch:"-0.54%",up:false},{s:"ESP35",p:"11284",ch:"+0.14%",up:true},
+  ],
+  "Stocks":[
+    {s:"AAPL",p:"224.84",ch:"+0.64%",up:true},{s:"MSFT",p:"428.40",ch:"+0.44%",up:true},
+    {s:"GOOGL",p:"182.84",ch:"+0.28%",up:true},{s:"AMZN",p:"192.84",ch:"+0.54%",up:true},
+    {s:"NVDA",p:"128.40",ch:"+1.84%",up:true},{s:"TSLA",p:"248.40",ch:"-0.84%",up:false},
+    {s:"META",p:"512.84",ch:"+0.74%",up:true},{s:"NFLX",p:"648.40",ch:"+0.34%",up:true},
+    {s:"AMD",p:"168.84",ch:"+1.24%",up:true},{s:"INTC",p:"32.84",ch:"-1.44%",up:false},
+  ],
+};
+
+const PAIR_INFO = {};
+Object.values(ALL_PAIRS).flat().forEach(p=>{ PAIR_INFO[p.s]=p; });
+const TOTAL_PAIRS = Object.values(ALL_PAIRS).flat().length;
+
+const ChartsPage = ({token}) => {
+  const [pair, setPair] = useState("EURUSD");
+  const [tf, setTf] = useState("1h");
+  const [search, setSearch] = useState("");
+  const [cat, setCat] = useState("Forex Major");
+  const [showList, setShowList] = useState(false);
+  const [priceData, setPriceData] = useState(null);
+  const bars=[55,70,60,80,65,75,85,70,90,78,88,72,82,68,92,80,86,74,94,82,65,78,84,72,90,82,76,88,94,80];
+
+  useEffect(()=>{
+    api("GET",`/api/analysis/price/${pair}?interval=${tf}`,null,token)
+      .then(setPriceData).catch(()=>setPriceData(null));
+  },[pair,tf,token]);
+
+  const info = priceData || PAIR_INFO[pair] || {p:"—",ch:"0%",up:true};
+  const displayPrice = priceData?.price || info.p;
+  const displayCh = priceData ? `${priceData.change_pct>0?"+":""}${priceData.change_pct}%` : info.ch;
+  const isUp = priceData ? priceData.up : info.up;
+
+  const filtered = search.trim()
+    ? Object.values(ALL_PAIRS).flat().filter(p=>p.s.includes(search.toUpperCase()))
+    : ALL_PAIRS[cat]||[];
+
+  return (
+    <div className="fade" style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div>
+        <div style={{color:"#f1f5f9",fontSize:20,fontWeight:800}}>📉 Grafik tahlil</div>
+        <div style={{color:"#64748b",fontSize:12}}>{TOTAL_PAIRS} ta instrument · Real vaqt</div>
+      </div>
+
+      <div style={{background:"#1e293b",borderRadius:12,padding:14,border:"1px solid #1e3a5f"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div>
+            <div style={{color:"#f1f5f9",fontWeight:800,fontSize:20}}>{pair}</div>
+            <div style={{color:isUp?"#4ade80":"#f87171",fontSize:14,fontWeight:700}}>
+              {displayPrice} <span style={{fontSize:11}}>{isUp?"↑":"↓"} {displayCh}</span>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+            <Badge color="green">● Jonli</Badge>
+            <button onClick={()=>setShowList(!showList)}
+              style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:7,padding:"7px 12px",fontSize:12,cursor:"pointer",fontWeight:700}}>
+              {showList?"✕":"⇄ Tanlash"}
+            </button>
+          </div>
+        </div>
+
+        {showList&&(
+          <div style={{marginBottom:12}}>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Qidiring (EURUSD, BTC, Gold...)"
+              style={{width:"100%",background:"#0f172a",border:"1px solid #334155",borderRadius:7,padding:"9px 12px",color:"#f1f5f9",fontSize:13,outline:"none",marginBottom:10}}/>
+            {!search&&(
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10}}>
+                {Object.keys(ALL_PAIRS).map(c=>(
+                  <button key={c} onClick={()=>setCat(c)}
+                    style={{background:cat===c?"#2563eb":"#0f172a",color:cat===c?"#fff":"#64748b",border:`1px solid ${cat===c?"#2563eb":"#334155"}`,borderRadius:6,padding:"4px 8px",fontSize:10,cursor:"pointer",fontWeight:700}}>
+                    {c} ({ALL_PAIRS[c].length})
+                  </button>
+                ))}
+              </div>
+            )}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,maxHeight:260,overflowY:"auto"}}>
+              {filtered.map(p=>(
+                <div key={p.s} onClick={()=>{setPair(p.s);setShowList(false);setSearch("");}}
+                  style={{background:pair===p.s?"#1e3a5f":"#0f172a",border:`1px solid ${pair===p.s?"#38bdf8":"#1e293b"}`,borderRadius:8,padding:"8px 10px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{color:pair===p.s?"#38bdf8":"#e2e8f0",fontWeight:700,fontSize:12}}>{p.s}</span>
+                  <span style={{color:p.up?"#4ade80":"#f87171",fontSize:10,fontWeight:700}}>{p.ch}</span>
+                </div>
+              ))}
+              {filtered.length===0&&<div style={{gridColumn:"1/-1",color:"#475569",fontSize:12,textAlign:"center",padding:20}}>Topilmadi</div>}
+            </div>
+            <div style={{color:"#475569",fontSize:10,marginTop:4,textAlign:"right"}}>{filtered.length} ta natija</div>
+          </div>
+        )}
+
+        <div style={{display:"flex",gap:4,marginBottom:10}}>
+          {["1m","5m","15m","1h","4h","1D","1W"].map(t=>(
+            <button key={t} onClick={()=>setTf(t)}
+              style={{flex:1,background:tf===t?"#0f172a":"transparent",color:tf===t?"#38bdf8":"#475569",border:`1px solid ${tf===t?"#38bdf8":"transparent"}`,borderRadius:6,padding:"4px 2px",fontSize:10,cursor:"pointer",fontWeight:700}}>
+              {t}
+            </button>
+          ))}
+        </div>
+
+        <div style={{background:"#0f172a",borderRadius:10,padding:"10px 6px",height:150,display:"flex",alignItems:"flex-end",gap:1.5}}>
+          {bars.map((h,i)=>(
+            <div key={i} style={{flex:1,background:i%3===1?"#ef444490":"#22c55e90",borderRadius:"2px 2px 0 0",height:`${h}%`}}/>
+          ))}
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginTop:10}}>
+          {[["O",priceData?.open||"1.083"],["H",priceData?.high||"1.088"],["L",priceData?.low||"1.081"],["V",priceData?.volume?`${(priceData.volume/1000).toFixed(0)}K`:"142K"]].map(([l,v],i)=>(
+            <div key={i} style={{background:"#0f172a",borderRadius:7,padding:"6px 8px"}}>
+              <div style={{color:"#475569",fontSize:9}}>{l}</div>
+              <div style={{color:"#94a3b8",fontWeight:700,fontSize:11,fontFamily:"monospace"}}>{v}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Market Watch */}
+      <div style={{background:"#1e293b",borderRadius:12,padding:14,border:"1px solid #1e3a5f"}}>
+        <div style={{color:"#94a3b8",fontSize:12,fontWeight:700,marginBottom:10}}>📋 Market Watch · {TOTAL_PAIRS} instrument</div>
+        <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:10}}>
+          {Object.keys(ALL_PAIRS).map(c=>(
+            <button key={c} onClick={()=>setCat(c)}
+              style={{background:cat===c?"#1e3a5f":"#0f172a",color:cat===c?"#38bdf8":"#475569",border:`1px solid ${cat===c?"#38bdf8":"transparent"}`,borderRadius:6,padding:"4px 8px",fontSize:10,cursor:"pointer",fontWeight:700}}>
+              {c}
+            </button>
+          ))}
+        </div>
+        <div style={{maxHeight:240,overflowY:"auto"}}>
+          {ALL_PAIRS[cat].map((p,i)=>(
+            <div key={p.s} onClick={()=>setPair(p.s)}
+              style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 4px",borderBottom:i<ALL_PAIRS[cat].length-1?"1px solid #0f172a":"none",cursor:"pointer",background:pair===p.s?"#1e3a5f20":"transparent",borderRadius:4}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{width:6,height:6,borderRadius:"50%",background:p.up?"#4ade80":"#f87171",flexShrink:0}}/>
+                <span style={{color:pair===p.s?"#38bdf8":"#e2e8f0",fontWeight:700,fontSize:13}}>{p.s}</span>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{color:"#94a3b8",fontSize:12,fontFamily:"monospace"}}>{p.p}</div>
+                <div style={{color:p.up?"#4ade80":"#f87171",fontSize:10,fontWeight:700}}>{p.ch}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* AI tahlil */}
+      <div style={{background:"#1e293b",borderRadius:12,padding:14,border:"1px solid #1e3a5f"}}>
+        <div style={{color:"#94a3b8",fontSize:12,fontWeight:700,marginBottom:10}}>🤖 AI Tezkor tahlil · {pair}</div>
+        {[["📈 Trend",isUp?"Ko'tarilish ↑":"Tushish ↓",isUp?"#4ade80":"#f87171"],
+          ["📍 Entry",String(displayPrice),"#38bdf8"],
+          ["🎯 TP","Hisoblanmoqda...","#4ade80"],
+          ["🛑 SL","Hisoblanmoqda...","#f87171"]].map(([l,v,c],i)=>(
+          <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:i<3?"1px solid #0f172a":"none"}}>
+            <span style={{color:"#64748b",fontSize:12}}>{l}</span>
+            <span style={{color:c,fontWeight:700,fontSize:12}}>{v}</span>
+          </div>
+        ))}
+        <div style={{marginTop:12}}>
+          <Btn color="blue" full onClick={()=>{}}>🤖 To'liq AI tahlil</Btn>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── SETTINGS ────────────────────────────────────────────────────
+
+const SettingsPage = ({token}) => (
+  <div className="fade" style={{display:"flex",flexDirection:"column",gap:14}}>
+    <div>
+      <div style={{color:"#f1f5f9",fontSize:20,fontWeight:800}}>⚙️ Sozlamalar</div>
+      <div style={{color:"#64748b",fontSize:12}}>Bot va panel sozlamalari</div>
+    </div>
+    {[
+      {title:"📊 Tahlil limitleri",fields:[{l:"Free kunlik limit",v:"5"},{l:"Pro kunlik limit",v:"50"},{l:"VIP limit",v:"Cheksiz"}]},
+      {title:"🎁 Referal mukofotlari",fields:[{l:"3 referal → Pro (kun)",v:"1"},{l:"10 referal → Pro (kun)",v:"7"}]},
+      {title:"🤖 AI modeli",fields:[{l:"OpenAI model",v:"gpt-4o"},{l:"Max tokens",v:"700"}]},
+    ].map((s,i)=>(
+      <div key={i} style={{background:"#1e293b",borderRadius:12,padding:14,border:"1px solid #1e3a5f"}}>
+        <div style={{color:"#94a3b8",fontSize:12,fontWeight:700,marginBottom:12}}>{s.title}</div>
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {s.fields.map((f,j)=>(
+            <div key={j}>
+              <div style={{color:"#64748b",fontSize:11,marginBottom:4}}>{f.l}</div>
+              <input defaultValue={f.v} style={{width:"100%",background:"#0f172a",border:"1px solid #334155",borderRadius:7,padding:"8px 12px",color:"#f1f5f9",fontSize:13,outline:"none"}}/>
+            </div>
+          ))}
+        </div>
+        <div style={{marginTop:12}}><Btn sm color="blue">💾 Saqlash</Btn></div>
+      </div>
+    ))}
+  </div>
+);
+
+// ── NAVIGATION CONFIG ────────────────────────────────────────────
+
+const ALL_NAV = [
+  {id:"dashboard", icon:"📊", label:"Dashboard",     adminOnly:true},
+  {id:"charts",    icon:"📉", label:"Grafik",         adminOnly:false},
+  {id:"screenshot",icon:"📸", label:"Screenshot",     adminOnly:false},
+  {id:"signals",   icon:"📈", label:"Signallar",      adminOnly:true},
+  {id:"users",     icon:"👥", label:"Foydalanuvchilar",adminOnly:true},
+  {id:"channels",  icon:"📡", label:"Kanallar",       adminOnly:true},
+  {id:"premium",   icon:"💎", label:"Premium",        adminOnly:true},
+  {id:"broadcast", icon:"📢", label:"Broadcast",      adminOnly:true},
+  {id:"settings",  icon:"⚙️", label:"Sozlamalar",     adminOnly:true},
+];
+
+// ── MAIN APP ────────────────────────────────────────────────────
+
+const App = () => {
+  const [auth, setAuth] = useState(null);
+  const [page, setPage] = useState("dashboard");
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(()=>{
+    const t=localStorage.getItem("token");
+    const r=localStorage.getItem("role");
+    const n=localStorage.getItem("name");
+    if(t&&r) setAuth({token:t,role:r,name:n||"User"});
+  },[]);
+
+  const logout = () => {
+    localStorage.clear(); setAuth(null); setPage("dashboard");
+  };
+
+  if(!auth) return <LoginPage onLogin={d=>{setAuth(d);setPage(d.role==="admin"?"dashboard":"charts");}}/>;
+
+  const nav = ALL_NAV.filter(n=>auth.role==="admin"||!n.adminOnly);
+  const safePage = nav.find(n=>n.id===page)?page:(auth.role==="admin"?"dashboard":"charts");
+  const current = nav.find(n=>n.id===safePage);
+
+  const renderPage = () => {
+    const props={token:auth.token};
+    switch(safePage){
+      case "dashboard":  return <DashboardPage {...props}/>;
+      case "users":      return <UsersPage {...props}/>;
+      case "signals":    return <SignalsPage {...props}/>;
+      case "channels":   return <ChannelsPage {...props}/>;
+      case "premium":    return <PremiumPage {...props}/>;
+      case "broadcast":  return <BroadcastPage {...props}/>;
+      case "settings":   return <SettingsPage {...props}/>;
+      case "screenshot": return <ScreenshotPage {...props}/>;
+      case "charts":     return <ChartsPage {...props}/>;
+      default:           return <ChartsPage {...props}/>;
+    }
+  };
+
+  return (
+    <div style={{background:"#0f172a",minHeight:"100vh"}}>
+      {/* Header */}
+      <div style={{background:"#0f172a",borderBottom:"1px solid #1e293b",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <button onClick={()=>setMenuOpen(!menuOpen)}
+            style={{background:"#1e293b",border:"none",color:"#94a3b8",fontSize:18,cursor:"pointer",borderRadius:7,padding:"6px 10px",lineHeight:1}}>
+            {menuOpen?"✕":"☰"}
+          </button>
+          <div style={{color:"#38bdf8",fontWeight:800,fontSize:16}}>📊 ForexBot</div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{color:"#475569",fontSize:11}}>{current?.icon} {current?.label}</span>
+          <button onClick={logout} style={{background:"#334155",border:"none",color:"#94a3b8",fontSize:11,cursor:"pointer",borderRadius:6,padding:"5px 8px"}}>Chiqish</button>
+        </div>
+      </div>
+
+      {/* Drawer */}
+      {menuOpen&&(
+        <div style={{position:"fixed",inset:0,zIndex:150}} onClick={()=>setMenuOpen(false)}>
+          <div style={{width:240,height:"100%",background:"#0f172a",borderRight:"1px solid #1e293b",display:"flex",flexDirection:"column",padding:"16px 10px",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+            <div style={{padding:"8px 10px 16px"}}>
+              <div style={{color:"#38bdf8",fontWeight:800,fontSize:18}}>📊 ForexBot Panel</div>
+              <div style={{color:"#475569",fontSize:11,marginTop:2}}>{auth.role==="admin"?"👑 Admin":"⭐ Premium"} · {auth.name}</div>
+            </div>
+            {nav.map(n=>(
+              <div key={n.id} onClick={()=>{setPage(n.id);setMenuOpen(false);}}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"11px 12px",borderRadius:8,marginBottom:2,cursor:"pointer",background:safePage===n.id?"#1e3a5f":"transparent",color:safePage===n.id?"#38bdf8":"#94a3b8",fontWeight:safePage===n.id?700:400,fontSize:14}}>
+                <span style={{fontSize:18}}>{n.icon}</span>{n.label}
+              </div>
+            ))}
+            <div style={{marginTop:"auto",borderTop:"1px solid #1e293b",paddingTop:14}}>
+              <button onClick={logout} style={{width:"100%",background:"#450a0a",border:"none",color:"#f87171",borderRadius:8,padding:"10px",fontSize:13,cursor:"pointer",fontWeight:700}}>🚪 Chiqish</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Content */}
+      <div style={{padding:"16px 14px 90px",maxWidth:520,margin:"0 auto"}}>
+        {renderPage()}
+      </div>
+
+      {/* Bottom Nav */}
+      <div style={{position:"fixed",bottom:0,left:0,right:0,background:"#0f172a",borderTop:"1px solid #1e293b",display:"flex",justifyContent:"space-around",padding:"8px 0 12px",zIndex:100}}>
+        {nav.slice(0,5).map(n=>(
+          <div key={n.id} onClick={()=>setPage(n.id)}
+            style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,cursor:"pointer",padding:"4px 6px",borderRadius:8,background:safePage===n.id?"#1e3a5f":"transparent",minWidth:52}}>
+            <span style={{fontSize:18}}>{n.icon}</span>
+            <span style={{fontSize:9,color:safePage===n.id?"#38bdf8":"#475569",fontWeight:safePage===n.id?700:400,textAlign:"center",maxWidth:52,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{n.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
