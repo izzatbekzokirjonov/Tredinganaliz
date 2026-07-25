@@ -2,7 +2,7 @@ modules = ["python-3.12"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["postgresql"]
+packages = ["postgresql", "nano"]
 
 [workflows]
 runButton = "Project"

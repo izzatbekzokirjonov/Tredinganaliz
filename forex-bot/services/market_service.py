@@ -81,7 +81,7 @@ def _compute(closes: list[float]) -> AnalysisResult:
     )
 
 
-async def analyze_pair(pair: str) -> AnalysisResult:
+async def analyze_pair(pair: str, interval: str = "1h") -> AnalysisResult:
     pair = pair.upper().replace("/", "")
     if pair not in PAIR_SOURCE_MAP:
         raise MarketDataError(f"'{pair}' qo'llab-quvvatlanmaydi.")
