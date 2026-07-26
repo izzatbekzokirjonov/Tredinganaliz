@@ -1,20 +1,9 @@
-# Telegram Bot
 aiogram==3.13.1
-
-# Database
 asyncpg==0.30.0
-
-# HTTP klient
 httpx==0.27.2
-
-# Anthropic Claude (AI izohi + Vision)
-anthropic==0.40.0
-
-# Web panel (FastAPI)
+anthropic>=0.40.0
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 python-multipart==0.0.9
 PyJWT==2.9.0
-
-# Muhit o'zgaruvchilari
 python-dotenv==1.0.1
