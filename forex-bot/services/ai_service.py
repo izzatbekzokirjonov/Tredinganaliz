@@ -1,22 +1,25 @@
-import anthropic
+try:
+    import anthropic
+    _anthropic_available = True
+except ImportError:
+    _anthropic_available = False
+
 from config import ANTHROPIC_API_KEY
 from utils.logger import logger
 
-_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
-
 SYSTEM_PROMPT = (
-    "Sen professional forex/kripto tahlilchisan. Foydalanuvchiga faqat senga "
-    "berilgan raqamlar asosida, o'zbek tilida, 3-4 jumlali qisqa va tushunarli "
-    "izoh yoz. Yangi narx yoki raqam to'qima. Oxirida risk haqida ogohlantirish qo'sh."
+    "Sen professional forex/kripto tahlilchisan. O'zbek tilida "
+    "3-4 jumlali qisqa izoh yoz. Risk haqida ogohlantirish qo'sh."
 )
 
 async def generate_analysis_comment(pair, trend, entry, tp, sl, current_price):
-    if _client is None:
+    if not _anthropic_available or not ANTHROPIC_API_KEY:
         return _fallback(pair, trend)
-    trend_uz = {"UP": "kotarilish", "DOWN": "tushish", "FLAT": "yon tomon"}.get(trend, trend)
-    prompt = f"Instrument: {pair}\nJoriy narx: {current_price}\nTrend: {trend_uz}\nEntry: {entry}\nTP: {tp}\nSL: {sl}"
     try:
-        response = _client.messages.create(
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        trend_uz = {"UP": "kotarilish", "DOWN": "tushish", "FLAT": "yon tomon"}.get(trend, trend)
+        prompt = f"Instrument: {pair}\nNarx: {current_price}\nTrend: {trend_uz}\nEntry: {entry}\nTP: {tp}\nSL: {sl}"
+        response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=220,
             system=SYSTEM_PROMPT,
@@ -29,4 +32,4 @@ async def generate_analysis_comment(pair, trend, entry, tp, sl, current_price):
 
 def _fallback(pair, trend):
     t = {"UP": "kotarilish", "DOWN": "tushish", "FLAT": "yon tomon"}.get(trend, trend)
-    return f"{pair} boyicha hozirgi holat {t} tendensiyasini korsatmoqda. Berilgan Entry/TP/SL darajalariga etibor bering. Risk menejmentga rioya qiling."
+    return f"{pair} boyicha {t} tendensiyasi. Entry/TP/SL darajalariga rioya qiling. Risk menejment muhim!"
