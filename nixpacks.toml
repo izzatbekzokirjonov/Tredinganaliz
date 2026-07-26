@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["python311"]
+
+[phases.install]
+cmds = ["pip install -r forex-bot/requirements.txt"]
+
+[start]
+cmd = "cd forex-bot && python run.py"
