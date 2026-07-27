@@ -185,7 +185,7 @@ const DashboardPage = ({token}) => {
 
   if(loading) return <div style={{color:"#64748b",textAlign:"center",padding:40}}>⏳ Yuklanmoqda...</div>;
 
-  const d = data || {total_users:156,total_analyses:1842,today_analyses:247,screenshots:387,signals_24h:5,tiers:{free:128,pro:23,vip:5},daily_analyses:[],recent_users:[]};
+  const d = data || {total_users:0,total_analyses:0,today_analyses:0,screenshots:0,signals_24h:5,tiers:{free:0,pro:0,vip:0},daily_analyses:[],recent_users:[]};
 
   const bars = d.daily_analyses.length ? d.daily_analyses.map(x=>x.count) : [42,65,55,80,70,60,88,74,91,83];
   const maxBar = Math.max(...bars,1);
@@ -197,10 +197,10 @@ const DashboardPage = ({token}) => {
         <div style={{color:"#64748b",fontSize:12}}>Bugungi holat</div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-        <Card icon="👥" title="Foydalanuvchi" value={d.total_users} sub={`🆓${d.tiers.free} ⭐${d.tiers.pro} 💎${d.tiers.vip}`} color="#38bdf8"/>
-        <Card icon="💎" title="Premium" value={d.tiers.pro+d.tiers.vip} sub={`⭐${d.tiers.pro} Pro · 💎${d.tiers.vip} VIP`} color="#c084fc"/>
-        <Card icon="📊" title="Jami tahlil" value={d.total_analyses} sub={`↑ +${d.today_analyses} bugun`} color="#4ade80"/>
-        <Card icon="📸" title="Screenshot" value={d.screenshots} color="#fb923c"/>
+        <Card icon="👥" title="Foydalanuvchi" value={d?.total_users||0} sub={`🆓${d.tiers.free} ⭐${d.tiers.pro} 💎${d.tiers.vip}`} color="#38bdf8"/>
+        <Card icon="💎" title="Premium" value={d?.tiers?(d.tiers.pro+d.tiers.vip):0} sub={`⭐${d.tiers.pro} Pro · 💎${d.tiers.vip} VIP`} color="#c084fc"/>
+        <Card icon="📊" title="Jami tahlil" value={d?.total_analyses||0} sub={`↑ +${d.today_analyses} bugun`} color="#4ade80"/>
+        <Card icon="📸" title="Screenshot" value={d?.screenshots||0} color="#fb923c"/>
       </div>
 
       <div style={{background:"#1e293b",borderRadius:12,padding:14,border:"1px solid #1e3a5f"}}>
@@ -269,15 +269,7 @@ const UsersPage = ({token}) => {
       const r=await api("GET",`/api/users?search=${search}&tier=${tier}&page=${page}&limit=15`,null,token);
       setUsers(r.users||[]); setTotal(r.total||0);
     }catch{
-      // demo data
-      setUsers([
-        {telegram_id:111,first_name:"Ali Karimov",username:"ali_k",subscription:"pro",total_analyses:42,referrals:3,is_banned:false,joined_at:"10.07.2026",expires_at:"28.07.2026"},
-        {telegram_id:222,first_name:"Bobur Toshev",username:"bobur",subscription:"vip",total_analyses:218,referrals:11,is_banned:false,joined_at:"01.06.2026",expires_at:null},
-        {telegram_id:333,first_name:"Camila Yusupova",username:"camila",subscription:"free",total_analyses:5,referrals:0,is_banned:false,joined_at:"20.07.2026",expires_at:null},
-        {telegram_id:444,first_name:"Dilnoza Rahimova",username:"dilnoza",subscription:"free",total_analyses:0,referrals:0,is_banned:true,joined_at:"15.07.2026",expires_at:null},
-        {telegram_id:555,first_name:"Eldor Nazarov",username:"eldor",subscription:"pro",total_analyses:87,referrals:5,is_banned:false,joined_at:"05.07.2026",expires_at:"15.08.2026"},
-      ]);
-      setTotal(156);
+}catch{setUsers([]);setTotal(0);
     }finally{setLoading(false);}
   },[search,tier,page,token]);
 
@@ -380,10 +372,7 @@ const SignalsPage = ({token}) => {
 
   const load = async() => {
     try{const r=await api("GET","/api/signals",null,token); setSignals(r);}
-    catch{setSignals([
-      {id:1,pair:"XAUUSD",direction:"BUY",entry:2318.5,tp:2334.0,sl:2308.0,comment:"Kuchli qo'llab",created_at:"22.07 13:15"},
-      {id:2,pair:"GBPUSD",direction:"SELL",entry:1.2684,tp:1.261,sl:1.2722,comment:"",created_at:"22.07 11:40"},
-    ]);}
+    catch{setSignals([]);}
   };
   useEffect(()=>{load();},[]);
 
@@ -1022,7 +1011,7 @@ const ALL_NAV = [
 // ── MAIN APP ────────────────────────────────────────────────────
 
 const App = () => {
-  const [auth, setAuth] = useState(null);
+  const [auth, setAuth] = useState({token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3Njg0MTQyMzEyIiwicm9sZSI6ImFkbWluIiwiZXhwIjoxNzg3NTgwMTI0fQ.JEpd6I7oW7BmSu4FEn6XvFmIG6IFjFSTWHG8mJVzWLk", role: "admin", name: "Admin"});
   const [page, setPage] = useState("dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
 
