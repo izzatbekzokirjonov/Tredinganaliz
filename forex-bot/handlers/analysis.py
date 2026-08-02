@@ -9,6 +9,7 @@ from services.market_service import MarketDataError, analyze_pair
 from services.vision_service import VisionAnalysisError, analyze_chart_image
 from utils.helpers import trend_to_uz
 from utils.logger import logger
+import httpx
 
 router = Router()
 
@@ -36,17 +37,62 @@ CATEGORIES = {
 }
 
 TIMEFRAMES = {
-    "1m":  "1 daqiqa",
-    "5m":  "5 daqiqa",
-    "15m": "15 daqiqa",
-    "30m": "30 daqiqa",
-    "1h":  "1 soat",
-    "4h":  "4 soat",
-    "1D":  "1 kun",
-    "1W":  "1 hafta",
+    "1m":"1 daq","5m":"5 daq","15m":"15 daq","30m":"30 daq",
+    "1h":"1 soat","4h":"4 soat","1D":"1 kun","1W":"1 hafta",
 }
 
-def categories_keyboard() -> InlineKeyboardMarkup:
+# Binance symbol map
+BINANCE_MAP = {
+    "BTCUSD":"BTCUSDT","ETHUSD":"ETHUSDT","BNBUSD":"BNBUSDT",
+    "XRPUSD":"XRPUSDT","SOLUSD":"SOLUSDT","ADAUSD":"ADAUSDT",
+}
+
+# Twelve Data symbol map
+TWELVEDATA_MAP = {
+    "EURUSD":"EUR/USD","GBPUSD":"GBP/USD","USDJPY":"USD/JPY",
+    "USDCHF":"USD/CHF","AUDUSD":"AUD/USD","NZDUSD":"NZD/USD",
+    "USDCAD":"USD/CAD","EURGBP":"EUR/GBP","EURJPY":"EUR/JPY",
+    "EURAUD":"EUR/AUD","EURCAD":"EUR/CAD","GBPJPY":"GBP/JPY",
+    "GBPAUD":"GBP/AUD","GBPCAD":"GBP/CAD","AUDCAD":"AUD/CAD",
+    "AUDCHF":"AUD/CHF","AUDJPY":"AUD/JPY","XAUUSD":"XAU/USD",
+    "XAGUSD":"XAG/USD","USOIL":"USO/USD","UKOIL":"UKOIL",
+}
+
+async def get_price(pair: str) -> str:
+    """Juftlik uchun joriy narxni qaytaradi."""
+    try:
+        if pair in BINANCE_MAP:
+            async with httpx.AsyncClient(timeout=5) as c:
+                r = await c.get(
+                    "https://api.binance.com/api/v3/ticker/price",
+                    params={"symbol": BINANCE_MAP[pair]}
+                )
+                data = r.json()
+                price = float(data["price"])
+                if price > 1000:
+                    return f"{price:,.0f}"
+                elif price > 1:
+                    return f"{price:.4f}"
+                else:
+                    return f"{price:.5f}"
+        elif pair in TWELVEDATA_MAP:
+            from config import TWELVE_DATA_API_KEY
+            async with httpx.AsyncClient(timeout=5) as c:
+                r = await c.get(
+                    "https://api.twelvedata.com/price",
+                    params={"symbol": TWELVEDATA_MAP[pair], "apikey": TWELVE_DATA_API_KEY}
+                )
+                data = r.json()
+                price = float(data["price"])
+                if price > 1000:
+                    return f"{price:,.2f}"
+                else:
+                    return f"{price:.5f}"
+    except Exception:
+        pass
+    return ""
+
+async def categories_keyboard() -> InlineKeyboardMarkup:
     buttons = [
         [InlineKeyboardButton(text=v["name"], callback_data=f"cat:{k}")]
         for k, v in CATEGORIES.items()
@@ -54,12 +100,14 @@ def categories_keyboard() -> InlineKeyboardMarkup:
     buttons.append([InlineKeyboardButton(text="📸 Screenshot tahlil", callback_data="cat:screenshot")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-def pairs_keyboard(cat_key: str) -> InlineKeyboardMarkup:
+async def pairs_keyboard(cat_key: str) -> InlineKeyboardMarkup:
     cat = CATEGORIES[cat_key]
     buttons = []
     row = []
-    for i, pair in enumerate(cat["pairs"]):
-        row.append(InlineKeyboardButton(text=pair, callback_data=f"pair:{cat_key}:{pair}"))
+    for pair in cat["pairs"]:
+        price = await get_price(pair)
+        label = f"{pair} {price}" if price else pair
+        row.append(InlineKeyboardButton(text=label, callback_data=f"pair:{cat_key}:{pair}"))
         if len(row) == 2:
             buttons.append(row)
             row = []
@@ -89,7 +137,7 @@ async def menu_analysis(message: Message, pool) -> None:
         f"📊 <b>Tahlil qilish</b>\n\n"
         f"Kategoriyani tanlang:\n"
         f"📋 Bugungi limit: <b>{limit_text}</b>",
-        reply_markup=categories_keyboard(),
+        reply_markup=await categories_keyboard(),
     )
 
 @router.callback_query(F.data.startswith("cat:"))
@@ -100,7 +148,7 @@ async def cb_category(callback: CallbackQuery, pool) -> None:
         limit_text = "♾️ Cheksiz" if remaining is None else f"{remaining} ta qoldi"
         await callback.message.edit_text(
             f"📊 <b>Tahlil qilish</b>\n\nKategoriyani tanlang:\n📋 Limit: <b>{limit_text}</b>",
-            reply_markup=categories_keyboard(),
+            reply_markup=await categories_keyboard(),
         )
     elif key == "screenshot":
         await callback.message.edit_text(
@@ -111,8 +159,12 @@ async def cb_category(callback: CallbackQuery, pool) -> None:
     elif key in CATEGORIES:
         cat = CATEGORIES[key]
         await callback.message.edit_text(
+            f"⏳ Narxlar yuklanmoqda...",
+        )
+        kb = await pairs_keyboard(key)
+        await callback.message.edit_text(
             f"{cat['name']}\n\nJuftlikni tanlang:",
-            reply_markup=pairs_keyboard(key),
+            reply_markup=kb,
         )
     await callback.answer()
 
@@ -157,8 +209,7 @@ async def photo_analyze(message: Message, pool, bot) -> None:
     limit_line = "\n📋 Bugun qoldi: ♾️" if remaining_after is None else f"\n📋 Bugun qoldi: <b>{remaining_after} ta</b>"
     await loading.edit_text(
         f"📸 <b>Screenshot tahlili</b>\n{'─'*28}\n\n{analysis}"
-        f"\n{'─'*28}{limit_line}\n"
-        f"<i>⚠️ AI tahlili — kafolat emas!</i>"
+        f"\n{'─'*28}{limit_line}\n<i>⚠️ AI tahlili — kafolat emas!</i>"
     )
 
 async def _run_analysis(message: Message, pool, telegram_id: int, pair: str, tf: str = "1h") -> None:
