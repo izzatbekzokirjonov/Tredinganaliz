@@ -6,7 +6,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 try:
     import jwt
 except ImportError:
-    import jose.jwt as jwt
+    from jose import jwt
 
 from config import ADMIN_IDS, BOT_TOKEN
 
@@ -35,6 +35,13 @@ def _decode_token(token: str) -> Optional[dict]:
     except Exception:
         return None
 
+def _role_from_tier(tier: str, telegram_id: int) -> str:
+    if telegram_id in ADMIN_IDS:
+        return "admin"
+    if tier in ("pro", "vip"):
+        return "premium"
+    return "free"
+
 def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> dict:
     if not credentials:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token topilmadi")
@@ -52,10 +59,3 @@ def get_premium_user(user: dict = Depends(get_current_user)) -> dict:
     if user.get("role") not in ("admin", "premium"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Premium talab qilinadi")
     return user
-
-def _role_from_tier(tier: str, telegram_id: int) -> str:
-    if telegram_id in ADMIN_IDS:
-        return "admin"
-    if tier in ("pro", "vip"):
-        return "premium"
-    return "free"
